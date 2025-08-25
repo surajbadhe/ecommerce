@@ -56,4 +56,4 @@ jobs:
             docker stop ecommerce-backend-container || true
             docker rm ecommerce-backend-container || true
             # Run the new container with the correct port mapping
-            docker run -d --name ecommerce-backend-container -p 80:8080 ${{ steps.build-image.outputs.image }}
+            docker run -e SPRING_PROFILES_ACTIVE="prod" -d --name ecommerce-backend-container -p 80:8080 ${{ steps.build-image.outputs.image }}
