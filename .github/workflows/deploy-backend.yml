@@ -7,11 +7,17 @@ on:
 
 jobs:
   build-and-deploy:
+    # This job will run on a GitHub-hosted runner
     runs-on: ubuntu-latest
+    # This tells the job to use the secrets from your 'prod' environment
+    environment: prod
+
     steps:
+      # Step 1: Check out your repository's code
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # Step 2: Configure your AWS credentials using the secrets
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -19,21 +25,24 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
 
+      # Step 3: Log in to your Amazon ECR registry
       - name: Log in to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
+      # Step 4: Build the Docker image, tag it, and push it to ECR
       - name: Build, tag, and push image to ECR
         id: build-image
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          ECR_REPOSITORY: "ecommerce-backend" # Your backend ECR repo name
+          ECR_REPOSITORY: "ecommerce-backend" # The name of your backend ECR repo
           IMAGE_TAG: ${{ github.sha }}
         run: |
           docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
           echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
 
+      # Step 5: Deploy the new image to your EC2 instance via SSH
       - name: Deploy to EC2
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -41,7 +50,10 @@ jobs:
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
+            # Pull the newly pushed image from ECR
             docker pull ${{ steps.build-image.outputs.image }}
+            # Stop and remove the old container to avoid port conflicts
             docker stop ecommerce-backend-container || true
             docker rm ecommerce-backend-container || true
+            # Run the new container with the correct port mapping
             docker run -d --name ecommerce-backend-container -p 80:8080 ${{ steps.build-image.outputs.image }}
